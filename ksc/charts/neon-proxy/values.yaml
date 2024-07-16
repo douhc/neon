@@ -1,0 +1,228 @@
+# Default values for neon-proxy.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+# -- strategy override for deployment
+deploymentStrategy:
+  type: Recreate
+
+# -- Deployment's terminationGracePeriodSeconds
+terminationGracePeriodSeconds: 30
+
+image:
+  # -- Neondatabase image repository
+  repository: neondatabase/neon
+  # -- image pull policy
+  pullPolicy: Always
+  # -- Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+# -- Specify docker-registry secret names as an array
+imagePullSecrets: []
+
+# -- String to partially override neon-proxy.fullname template (will maintain the release name)
+nameOverride: ""
+# -- String to fully override neon-proxy.fullname template
+fullnameOverride: ""
+
+# Neon proxy settings
+settings:
+  # settings.useCertManager if true, will use cert-manager to generate TLS certs for client postgres connections
+  useCertManager: true
+  # settings.authEndpoint -- auth endpoint, e.g. "http://console.neon/authenticate_proxy_request/"
+  authEndpoint: ""
+  # settings.uri - psql session endpoint, e.g. "http://console.neon/psql_session/"
+  uri: ""
+  # settings.authBackend -- auth method used (console|link|postgres)
+  authBackend: "link"
+  # settings.domain -- domain used in TLS cert for client postgres connections
+  domain: ""
+  # settings.extraDomains -- domains used in extra TLS certs for client postgres connections
+  extraDomains: []
+  # settings.rustLog -- Proxy log level
+  rustLog: "INFO"
+  # settings.otelExporterOtlpEndpoint -- OpenTelemetry collector URL (will be converted into `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable)
+  otelExporterOtlpEndpoint: ""
+  # settings.otelExporterDisabled -- Disables OpenTelemetry (will be converted into `OTEL_SDK_DISABLED` environment variable)
+  otelExporterDisabled: false
+  # settings.sentryUrl -- url (will be converted into `SENTRY_DSN` environment variable) used by sentry to collect error/panic events in neon-proxy
+  sentryUrl: ""
+  # settings.sentryEnvironment -- "development" or "production". It will be visible in sentry in order to filter issues
+  sentryEnvironment: "development"
+  # settings.wssPort -- (int) numeric port used for wss/https connections. If null, wss server will not be started
+  wssPort: null
+  # settings.metricCollectionEndpoint -- (url) endpoint used to send metrics to. If null, metrics will not be sent.
+  metricCollectionEndpoint: ""
+  # settings.metricCollectionInterval -- (string) how often metrics should be sent.
+  metricCollectionInterval: ""
+  # settings.controlplane_token -- (string) JWT token to pass to control plane management API
+  controlplane_token: ""
+  # settings.wakeComputeLock -- (string) Configures the locking of wake_compute per endpoint
+  wakeComputeLock: "permits=0"
+  # settings.connectComputeLock -- (string) Configures the locking of connect_compute per compute
+  connectComputeLock: ""
+  # settings.redisNotifications -- (url) Configures redis client
+  redisNotifications: ""
+  # settings.sqlOverHttpTimeout -- (string) timeout for http connection requests
+  sqlOverHttpTimeout: "15s"
+  # settings.httpPoolOptIn -- (bool) Sets the SQL over HTTP Pool to opt-in-only mode if true. Set false to enable it always
+  httpPoolOptIn: true
+  # settings.disableDynamicRateLimiter -- (bool) Disable dynamic rate limiter
+  disableDynamicRateLimiter: true
+  # settings.endpointRpsLimits -- (list) list of rate limiters for connection attempts over different time intervals
+  endpointRpsLimits: []
+  # settings.wakeComputeLimits -- (list) list of rate limiters for wake_compute over different time intervals
+  wakeComputeLimits: []
+  # settings.authRateLimitsEnabled -- (bool) Whether to enable the authentication rate limiter
+  authRateLimitsEnabled: null
+  # settings.authRateLimit -- (list) list of rate limiters over different time intervals for authentication hash iterations per IP,EP
+  authRateLimits: null
+  # settings.parquetUploadRemoteStorage -- (string) Storage location to upload the parquet files to.
+  parquetUploadRemoteStorage: ""
+  # settings.parquetUploadDisconnectEventsRemoteStorage -- (string) Storage location to upload the parquet files with disconnect events to.
+  parquetUploadDisconnectEventsRemoteStorage: ""
+  # settings.parquetUploadRowGroupSize -- (string) How many rows to include in a row group
+  parquetUploadRowGroupSize: "8192"
+  # settings.parquetUploadPageSize -- (string) How large each column page should be in bytes
+  parquetUploadPageSize: "1048576"
+  # settings.parquetUploadSize -- (string) How large the total parquet file should be in bytes
+  parquetUploadSize: "100000000"
+  # settings.parquetUploadMaximumDuration -- (string) How long to wait before forcing a file upload
+  parquetUploadMaximumDuration: "20m"
+  # settings.parquetUploadCompression -- (string) What level of compression to use
+  parquetUploadCompression: uncompressed
+  # settings.region -- (string) Region this proxy service is deployed into
+  region: ""
+  # settings.awsAccessKeyId -- (string) AWS Access Key ID
+  awsAccessKeyId: ""
+  # settings.awsSecretAccessKey -- (string) AWS Secret Access Key
+  awsSecretAccessKey: ""
+  # settings.metricBackupCollectionRemoteStorage -- (string) Storage location to upload the metric backup files to
+  metricBackupCollectionRemoteStorage: ""
+  # settings.metrickBackupCollectionInterval -- (string) How often to upload the metric backup files
+  metricBackupCollectionInterval: "10m"
+  # settings.metricBackupCollectionChunkSize -- (string) How large each chunk of the metric backup files should be in bytes
+  metricBackupCollectionChunkSize: "4194304"
+  # settings.endpointCacheConfig -- (string) Config for cache for all valid endpoints
+  endpointCacheConfig: ""
+  # settings.redisHost -- (string) Redis host for streaming connections (might be different from the notifications host)
+  redisHost: ""
+  # settings.redisPort -- (string) Redis port for streaming connections
+  redisPort: ""
+  # settings.redisClusterName -- (string) Redis cluster name, used in aws elasticache
+  redisClusterName: "regional-control-plane-redis"
+  # settings.redisUserId -- (string) Redis user_id, used in aws elasticache
+  redisUserId: "neon"
+  # settings.awsRegion -- (string) Aws region to retrieve credentials
+  awsRegion: ""
+
+serviceAccount:
+  # serviceAccount.create - Specifies whether a service account should be created
+  create: true
+  # serviceAccount.annotations -- Annotations to add to the service account
+  annotations: {}
+  # serviceAccount.name - The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# -- Annotations for neon-proxy pods
+podAnnotations: {}
+
+# -- Additional labels for neon-proxy pods
+podLabels: {}
+  # neon_service: proxy
+  # neon_env: staging
+  # neon_region: us-west-1
+  # neon_region_slug: virginia
+
+# -- neon-proxy's pods Security Context
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# -- container lifecycle hooks specification for neon-proxy container
+containerLifecycle: {}
+
+# -- neon-proxy's containers Security Context
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  # service.annotations -- Annotations to add to the service
+  annotations: {}
+  # service.type -- Service type
+  type: ClusterIP
+  # service.port -- Service management port
+  port: 7000
+  # service.httpPort -- Http management port
+  httpPort: 9090
+
+exposedService:
+  # exposedService.annotations -- Annotations to add to the exposed service
+  annotations: {}
+    # service.beta.kubernetes.io/aws-load-balancer-type: external
+    # service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    # service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    # external-dns.alpha.kubernetes.io/hostname: chart-example.local
+  # exposedService.type -- Exposed service type
+  type: LoadBalancer
+  # exposedService.port -- Exposed Service proxy port
+  port: 5432
+  # exposedService.httpsPort -- (int) Exposed Service https port. If null, https server will not be exposed.
+  httpsPort: null
+
+resources:
+  limits:
+    memory: 32Gi
+  requests:
+    cpu: 400m
+    memory: 2Gi
+
+# -- Node labels for pod assignment.
+nodeSelector: {}
+
+# -- Tolerations for pod assignment.
+tolerations: []
+
+# -- Affinity for pod assignment
+affinity: {}
+
+metrics:
+  # metrics.enabled -- Enable prometheus metrcis autodiscovery
+  enabled: false
+  ## Prometheus Operator ServiceMonitor configuration
+  ##
+  serviceMonitor:
+    # metrics.serviceMonitor.enabled -- Create ServiceMonitor resource
+    enabled: false
+
+    # metrics.serviceMonitor.namespace -- The namespace in which the ServiceMonitor will be created, if empty then Release.Namespace used
+    namespace: ""
+
+    ## Interval at which metrics should be scraped.
+    ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
+    ##
+    # metrics.serviceMonitor.interval -- Interval in which prometheus scrapes
+    interval: 10s
+
+    ## Timeout after which the scrape is ended
+    ## ref: https://github.com/coreos/prometheus-operator/blob/master/Documentation/api.md#endpoint
+    ##
+    # metrics.serviceMonitor.scrapeTimeout -- Scrape Timeout duration for prometheus
+    scrapeTimeout: 10s
+
+    ## ServiceMonitor selector labels
+    ## ref: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack#prometheusioscrape
+    ##
+    # metrics.serviceMonitor.selector -- Additional labels to attach (used by Prometheus operator)
+    selector: {}
+    # selector:
+    #   prometheus: neon
+# -- Additional manifests that are created with the chart
+extraManifests: []

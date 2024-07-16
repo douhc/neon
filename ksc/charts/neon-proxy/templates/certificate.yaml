@@ -1,0 +1,17 @@
+{{- if and .Values.settings.domain .Values.settings.useCertManager }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "neon-proxy.certificate-name" .Values.settings.domain }}
+spec:
+  commonName: {{ .Values.settings.domain | quote }}
+  dnsNames:
+  - {{ .Values.settings.domain | quote }}
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: cert-manager-clusterissuer
+  secretName: {{ include "neon-proxy.certificate-secret" .Values.settings.domain }}
+  privateKey:
+    encoding: PKCS8
+{{- end }}

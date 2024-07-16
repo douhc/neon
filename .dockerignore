@@ -28,3 +28,4 @@
 !trace/
 !vendor/postgres-*/
 !workspace_hack/
+!ksc/
