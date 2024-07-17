@@ -15,8 +15,8 @@ set -eux -o pipefail
 
 COMPOSE_FILE='docker-compose.yml'
 cd $(dirname $0)
-COMPUTE_CONTAINER_NAME=docker-compose-compute-1
-TEST_CONTAINER_NAME=docker-compose-neon-test-extensions-1
+COMPUTE_CONTAINER_NAME=docker-compose_compute_1
+TEST_CONTAINER_NAME=docker-compose_neon-test-extensions_1
 PSQL_OPTION="-h localhost -U cloud_admin -p 55433 -d postgres"
 : ${http_proxy:=}
 : ${https_proxy:=}
@@ -25,16 +25,18 @@ export http_proxy https_proxy
 cleanup() {
     echo "show container information"
     docker ps
-    docker compose --profile test-extensions -f $COMPOSE_FILE logs
+    docker-compose --profile test-extensions -f $COMPOSE_FILE logs
     echo "stop containers..."
-    docker compose --profile test-extensions -f $COMPOSE_FILE down
+    docker-compose --profile test-extensions -f $COMPOSE_FILE down
 }
 
-for pg_version in 14 15 16; do
+for pg_version in 16; do
     echo "clean up containers if exists"
     cleanup
+    echo "pg_version": $pg_version
     PG_TEST_VERSION=$(($pg_version < 16 ? 16 : $pg_version))
-    PG_VERSION=$pg_version PG_TEST_VERSION=$PG_TEST_VERSION docker compose --profile test-extensions -f $COMPOSE_FILE up --build -d
+    PG_VERSION=$pg_version PG_TEST_VERSION=$PG_TEST_VERSION docker-compose --profile test-extensions -f $COMPOSE_FILE up --build -d
+    echo 
 
     echo "wait until the compute is ready. timeout after 60s. "
     cnt=0
@@ -46,7 +48,7 @@ for pg_version in 14 15 16; do
             cleanup
             exit 1
         fi
-        if docker compose --profile test-extensions -f $COMPOSE_FILE logs "compute_is_ready" | grep -q "accepting connections"; then
+        if docker-compose --profile test-extensions -f $COMPOSE_FILE logs "compute_is_ready" | grep -q "accepting connections"; then
             echo "OK. The compute is ready to connect."
             echo "execute simple queries."
             docker exec $COMPUTE_CONTAINER_NAME /bin/bash -c "psql $PSQL_OPTION"

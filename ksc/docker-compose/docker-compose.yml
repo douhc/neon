@@ -1,7 +1,7 @@
 services:
   minio:
     restart: always
-    image: quay.io/minio/minio:RELEASE.2022-10-20T00-55-09Z
+    image: minio/minio:RELEASE.2022-03-17T06-34-49Z
     ports:
       - 9000:9000
       - 9001:9001
@@ -29,7 +29,7 @@ services:
 
   pageserver:
     restart: always
-    image: ${REPOSITORY:-neondatabase}/neon:${TAG:-latest}
+    image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     environment:
       - BROKER_ENDPOINT='http://storage_broker:50051'
       - AWS_ACCESS_KEY_ID=minio
@@ -56,7 +56,7 @@ services:
 
   safekeeper1:
     restart: always
-    image: ${REPOSITORY:-neondatabase}/neon:${TAG:-latest}
+    image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper1:5454
       - SAFEKEEPER_ID=1
@@ -86,7 +86,7 @@ services:
 
   safekeeper2:
     restart: always
-    image: ${REPOSITORY:-neondatabase}/neon:${TAG:-latest}
+    image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper2:5454
       - SAFEKEEPER_ID=2
@@ -116,7 +116,7 @@ services:
 
   safekeeper3:
     restart: always
-    image: ${REPOSITORY:-neondatabase}/neon:${TAG:-latest}
+    image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper3:5454
       - SAFEKEEPER_ID=3
@@ -146,7 +146,7 @@ services:
 
   storage_broker:
     restart: always
-    image: ${REPOSITORY:-neondatabase}/neon:${TAG:-latest}
+    image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     ports:
       - 50051:50051
     command:
@@ -155,14 +155,7 @@ services:
 
   compute:
     restart: always
-    build:
-      context: ./compute_wrapper/
-      args:
-        - REPOSITORY=${REPOSITORY:-neondatabase}
-        - COMPUTE_IMAGE=compute-node-v${PG_VERSION:-16}
-        - TAG=${TAG:-latest}
-        - http_proxy=$http_proxy
-        - https_proxy=$https_proxy
+    image: harbor.dh.ksyun.com/bigdata/pbear-neon-cn:0.0.1-pg-16
     environment:
       - PG_VERSION=${PG_VERSION:-16}
       #- RUST_BACKTRACE=1
@@ -182,7 +175,7 @@ services:
       - pageserver
 
   compute_is_ready:
-    image: postgres:latest
+    image: harbor.dh.ksyun.com/bigdata/pbear-pg:0.0.1-pg-16
     entrypoint:
       - "/bin/bash"
       - "-c"

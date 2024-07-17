@@ -1,0 +1,29 @@
+ARG PG_MAJOR=16
+FROM neondatabase/compute-node-v${PG_MAJOR}:latest
+
+USER root
+ENV LANG=en_US.UTF-8 \
+        LC_ALL=en_US.UTF-8 \
+        TZ=Asia/Shanghai
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 修改APT源
+RUN mv /etc/apt/sources.list /etc/apt/sources.list.bk
+COPY ksc/docker/sources.list /etc/apt/sources.list
+
+RUN apt update  && \
+    apt install -y --no-install-recommends  tzdata locales && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8 && \
+    apt install -y --no-install-recommends  procps vim tini lsof grep sed git curl wget telnet ca-certificates gnupg jq python3-pip netcat && \
+    mkdir /root/.pip && \
+    apt clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/* ~/.cache/*
+
+COPY ksc/docker/pip.conf /root/.pip/pip.conf 
+#Faker is required for the pg_anon test
+RUN pip3 install Faker && \
+    rm -rf `pip3 cache dir`
+
+#This is required for the pg_hintplan test
+RUN mkdir -p /ext-src/pg_hint_plan-src && chown postgres /ext-src/pg_hint_plan-src 
+
+USER postgres

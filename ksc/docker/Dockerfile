@@ -17,4 +17,4 @@ RUN apt update  && \
     apt install -y --no-install-recommends  procps vim tini lsof grep sed git curl wget telnet ca-certificates gnupg && \
         apt clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/* ~/.cache/*
 
-# USER neon
+USER neon
