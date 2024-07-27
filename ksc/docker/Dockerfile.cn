@@ -24,6 +24,9 @@ RUN pip3 install Faker && \
     rm -rf `pip3 cache dir`
 
 #This is required for the pg_hintplan test
-RUN mkdir -p /ext-src/pg_hint_plan-src && chown postgres /ext-src/pg_hint_plan-src 
-
+RUN mkdir -p /var/db/postgres/specs && mkdir -p /ext-src/pg_hint_plan-src && chown postgres /ext-src/pg_hint_plan-src 
+COPY ksc/docker/spec.json /var/db/postgres/specs/spec.json
+COPY ksc/docker/start-cn.sh /usr/local/bin/start-cn.sh
 USER postgres
+
+ENTRYPOINT ["/usr/local/bin/start-cn.sh"]

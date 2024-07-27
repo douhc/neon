@@ -1,39 +1,42 @@
 services:
-  minio:
-    restart: always
-    image: minio/minio:RELEASE.2022-03-17T06-34-49Z
-    ports:
-      - 9000:9000
-      - 9001:9001
-    environment:
-      - MINIO_ROOT_USER=minio
-      - MINIO_ROOT_PASSWORD=password
-    command: server /data --address :9000 --console-address ":9001"
+  # minio:
+  #   restart: always
+  #   image: minio/minio:RELEASE.2022-03-17T06-34-49Z
+  #   ports:
+  #     - 9000:9000
+  #     - 9001:9001
+  #   environment:
+  #     - MINIO_ROOT_USER=minio
+  #     - MINIO_ROOT_PASSWORD=password
+  #   command: server /data --address :9000 --console-address ":9001"
 
-  minio_create_buckets:
-    image: minio/mc
-    environment:
-      - MINIO_ROOT_USER=minio
-      - MINIO_ROOT_PASSWORD=password
-    entrypoint:
-      - "/bin/sh"
-      - "-c"
-    command:
-      - "until (/usr/bin/mc alias set minio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD) do
-             echo 'Waiting to start minio...' && sleep 1;
-         done;
-         /usr/bin/mc mb minio/neon --region=eu-north-1;
-         exit 0;"
-    depends_on:
-      - minio
+  # minio_create_buckets:
+  #   image: minio/mc
+  #   environment:
+  #     - MINIO_ROOT_USER=minio
+  #     - MINIO_ROOT_PASSWORD=password
+  #   entrypoint:
+  #     - "/bin/sh"
+  #     - "-c"
+  #   command:
+  #     - "until (/usr/bin/mc alias set minio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD) do
+  #            echo 'Waiting to start minio...' && sleep 1;
+  #        done;
+  #        /usr/bin/mc mb minio/neon --region=eu-north-1;
+  #        exit 0;"
+  #   depends_on:
+  #     - minio
 
   pageserver:
     restart: always
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
+    extra_hosts:
+      - "minio:10.43.195.166"
+
     environment:
       - BROKER_ENDPOINT='http://storage_broker:50051'
-      - AWS_ACCESS_KEY_ID=minio
-      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
       #- RUST_BACKTRACE=1
     ports:
        #- 6400:6400  # pg protocol handler
@@ -52,17 +55,19 @@ services:
                                                         prefix_in_bucket='/pageserver/'}\""
     depends_on:
       - storage_broker
-      - minio_create_buckets
+      # - minio_create_buckets
 
   safekeeper1:
     restart: always
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
+    extra_hosts:
+      - "minio:10.43.195.166"
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper1:5454
       - SAFEKEEPER_ID=1
       - BROKER_ENDPOINT=http://storage_broker:50051
-      - AWS_ACCESS_KEY_ID=minio
-      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
       #- RUST_BACKTRACE=1
     ports:
       #- 5454:5454 # pg protocol handler
@@ -82,17 +87,19 @@ services:
                                         prefix_in_bucket='/safekeeper/'}\""
     depends_on:
       - storage_broker
-      - minio_create_buckets
+      # - minio_create_buckets
 
   safekeeper2:
     restart: always
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
+    extra_hosts:
+      - "minio:10.43.195.166"
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper2:5454
       - SAFEKEEPER_ID=2
       - BROKER_ENDPOINT=http://storage_broker:50051
-      - AWS_ACCESS_KEY_ID=minio
-      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
       #- RUST_BACKTRACE=1
     ports:
       #- 5454:5454 # pg protocol handler
@@ -112,17 +119,19 @@ services:
                                         prefix_in_bucket='/safekeeper/'}\""
     depends_on:
       - storage_broker
-      - minio_create_buckets
+      # - minio_create_buckets
 
   safekeeper3:
     restart: always
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
+    extra_hosts:
+      - "minio:10.43.195.166"
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper3:5454
       - SAFEKEEPER_ID=3
       - BROKER_ENDPOINT=http://storage_broker:50051
-      - AWS_ACCESS_KEY_ID=minio
-      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
       #- RUST_BACKTRACE=1
     ports:
       #- 5454:5454 # pg protocol handler
@@ -142,7 +151,7 @@ services:
                                         prefix_in_bucket='/safekeeper/'}\""
     depends_on:
       - storage_broker
-      - minio_create_buckets
+      # - minio_create_buckets
 
   storage_broker:
     restart: always
@@ -156,18 +165,20 @@ services:
   compute:
     restart: always
     image: harbor.dh.ksyun.com/bigdata/pbear-neon-cn:0.0.1-pg-16
+    extra_hosts:
+      - "minio:10.43.195.166"
     environment:
       - PG_VERSION=${PG_VERSION:-16}
       #- RUST_BACKTRACE=1
-    # Mount the test files directly, for faster editing cycle.
-    volumes:
-      - ./compute_wrapper/var/db/postgres/specs/:/var/db/postgres/specs/
-      - ./compute_wrapper/shell/:/shell/
+      - TENANT_ID=a87b11f28feed3f5c1705cd4f9d0fca4
+      - TIMELINE_ID=9ec89259964e004f155c323a63b49135
+      - SAFEKEEPERS=safekeeper1:5454,safekeeper2:5454,safekeeper3:5454
+      - PAGESERVER_CONNSTRING='host=pageserver port=6400'
     ports:
       - 55433:55433 # pg protocol handler
       - 3080:3080 # http endpoints
     entrypoint:
-      - "/shell/compute.sh"
+      - "/usr/local/bin/start-cn.sh"
     depends_on:
       - safekeeper1
       - safekeeper2
