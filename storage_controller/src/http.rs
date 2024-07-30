@@ -3,7 +3,7 @@ use crate::metrics::{
     METRICS_REGISTRY,
 };
 use crate::reconciler::ReconcileError;
-use crate::service::{Service, STARTUP_RECONCILE_TIMEOUT};
+use crate::service::{LeadershipStatus, Service, STARTUP_RECONCILE_TIMEOUT};
 use anyhow::Context;
 use futures::Future;
 use hyper::header::CONTENT_TYPE;
@@ -330,6 +330,22 @@ async fn handle_tenant_timeline_delete(
     .await
 }
 
+async fn handle_tenant_timeline_detach_ancestor(
+    service: Arc<Service>,
+    req: Request<Body>,
+) -> Result<Response<Body>, ApiError> {
+    let tenant_id: TenantId = parse_request_param(&req, "tenant_id")?;
+    check_permissions(&req, Scope::PageServerApi)?;
+
+    let timeline_id: TimelineId = parse_request_param(&req, "timeline_id")?;
+
+    let res = service
+        .tenant_timeline_detach_ancestor(tenant_id, timeline_id)
+        .await?;
+
+    json_response(StatusCode::OK, res)
+}
+
 async fn handle_tenant_timeline_passthrough(
     service: Arc<Service>,
     req: Request<Body>,
@@ -414,7 +430,7 @@ async fn handle_tenant_describe(
     service: Arc<Service>,
     req: Request<Body>,
 ) -> Result<Response<Body>, ApiError> {
-    check_permissions(&req, Scope::Admin)?;
+    check_permissions(&req, Scope::Scrubber)?;
 
     let tenant_id: TenantId = parse_request_param(&req, "tenant_id")?;
     json_response(StatusCode::OK, service.tenant_describe(tenant_id)?)
@@ -591,6 +607,13 @@ async fn handle_tenant_update_policy(mut req: Request<Body>) -> Result<Response<
     )
 }
 
+async fn handle_step_down(req: Request<Body>) -> Result<Response<Body>, ApiError> {
+    check_permissions(&req, Scope::Admin)?;
+
+    let state = get_state(&req);
+    json_response(StatusCode::OK, state.service.step_down().await)
+}
+
 async fn handle_tenant_drop(req: Request<Body>) -> Result<Response<Body>, ApiError> {
     let tenant_id: TenantId = parse_request_param(&req, "tenant_id")?;
     check_permissions(&req, Scope::PageServerApi)?;
@@ -718,6 +741,47 @@ struct RequestMeta {
     at: Instant,
 }
 
+pub fn prologue_leadership_status_check_middleware<
+    B: hyper::body::HttpBody + Send + Sync + 'static,
+>() -> Middleware<B, ApiError> {
+    Middleware::pre(move |req| async move {
+        let state = get_state(&req);
+        let leadership_status = state.service.get_leadership_status();
+
+        enum AllowedRoutes<'a> {
+            All,
+            Some(Vec<&'a str>),
+        }
+
+        let allowed_routes = match leadership_status {
+            LeadershipStatus::Leader => AllowedRoutes::All,
+            LeadershipStatus::SteppedDown => {
+                // TODO: does it make sense to allow /status here?
+                AllowedRoutes::Some(["/control/v1/step_down", "/status", "/metrics"].to_vec())
+            }
+            LeadershipStatus::Candidate => {
+                AllowedRoutes::Some(["/ready", "/status", "/metrics"].to_vec())
+            }
+        };
+
+        let uri = req.uri().to_string();
+        match allowed_routes {
+            AllowedRoutes::All => Ok(req),
+            AllowedRoutes::Some(allowed) if allowed.contains(&uri.as_str()) => Ok(req),
+            _ => {
+                tracing::info!(
+                    "Request {} not allowed due to current leadership state",
+                    req.uri()
+                );
+
+                Err(ApiError::ResourceUnavailable(
+                    format!("Current leadership status is {leadership_status}").into(),
+                ))
+            }
+        }
+    })
+}
+
 fn prologue_metrics_middleware<B: hyper::body::HttpBody + Send + Sync + 'static>(
 ) -> Middleware<B, ApiError> {
     Middleware::pre(move |req| async move {
@@ -804,6 +868,7 @@ pub fn make_router(
     build_info: BuildInfo,
 ) -> RouterBuilder<hyper::Body, ApiError> {
     let mut router = endpoint::make_router()
+        .middleware(prologue_leadership_status_check_middleware())
         .middleware(prologue_metrics_middleware())
         .middleware(epilogue_metrics_middleware());
     if auth.is_some() {
@@ -955,6 +1020,9 @@ pub fn make_router(
                 RequestName("control_v1_tenant_policy"),
             )
         })
+        .put("/control/v1/step_down", |r| {
+            named_request_span(r, handle_step_down, RequestName("control_v1_step_down"))
+        })
         // Tenant operations
         // The ^/v1/ endpoints act as a "Virtual Pageserver", enabling shard-naive clients to call into
         // this service to manage tenants that actually consist of many tenant shards, as if they are a single entity.
@@ -1006,6 +1074,16 @@ pub fn make_router(
                 RequestName("v1_tenant_timeline"),
             )
         })
+        .put(
+            "/v1/tenant/:tenant_id/timeline/:timeline_id/detach_ancestor",
+            |r| {
+                tenant_service_handler(
+                    r,
+                    handle_tenant_timeline_detach_ancestor,
+                    RequestName("v1_tenant_timeline_detach_ancestor"),
+                )
+            },
+        )
         // Tenant detail GET passthrough to shard zero:
         .get("/v1/tenant/:tenant_id", |r| {
             tenant_service_handler(

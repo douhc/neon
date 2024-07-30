@@ -29,13 +29,16 @@ use crate::page_cache::{self, FileId, PAGE_SZ};
 use crate::repository::{Key, Value, KEY_SIZE};
 use crate::tenant::blob_io::BlobWriter;
 use crate::tenant::block_io::{BlockBuf, BlockReader, FileBlockReader};
-use crate::tenant::disk_btree::{DiskBtreeBuilder, DiskBtreeReader, VisitDirection};
+use crate::tenant::disk_btree::{
+    DiskBtreeBuilder, DiskBtreeIterator, DiskBtreeReader, VisitDirection,
+};
 use crate::tenant::storage_layer::{
     LayerAccessStats, ValueReconstructResult, ValueReconstructState,
 };
 use crate::tenant::timeline::GetVectoredError;
 use crate::tenant::vectored_blob_io::{
-    BlobFlag, MaxVectoredReadBytes, VectoredBlobReader, VectoredRead, VectoredReadPlanner,
+    BlobFlag, MaxVectoredReadBytes, StreamingVectoredReadPlanner, VectoredBlobReader, VectoredRead,
+    VectoredReadPlanner,
 };
 use crate::tenant::{PageReconstructError, Timeline};
 use crate::virtual_file::{self, VirtualFile};
@@ -46,10 +49,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use hex;
 use itertools::Itertools;
 use pageserver_api::keyspace::KeySpace;
-use pageserver_api::models::LayerAccessKind;
 use pageserver_api::shard::{ShardIdentity, TenantShardId};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::ops::Range;
@@ -224,7 +227,7 @@ impl ImageLayer {
             return Ok(());
         }
 
-        let inner = self.load(LayerAccessKind::Dump, ctx).await?;
+        let inner = self.load(ctx).await?;
 
         inner.dump(ctx).await?;
 
@@ -251,12 +254,8 @@ impl ImageLayer {
     /// Open the underlying file and read the metadata into memory, if it's
     /// not loaded already.
     ///
-    async fn load(
-        &self,
-        access_kind: LayerAccessKind,
-        ctx: &RequestContext,
-    ) -> Result<&ImageLayerInner> {
-        self.access_stats.record_access(access_kind, ctx);
+    async fn load(&self, ctx: &RequestContext) -> Result<&ImageLayerInner> {
+        self.access_stats.record_access(ctx);
         self.inner
             .get_or_try_init(|| self.load_inner(ctx))
             .await
@@ -266,9 +265,8 @@ impl ImageLayer {
     async fn load_inner(&self, ctx: &RequestContext) -> Result<ImageLayerInner> {
         let path = self.path();
 
-        let loaded = ImageLayerInner::load(&path, self.desc.image_layer_lsn(), None, None, ctx)
-            .await
-            .and_then(|res| res)?;
+        let loaded =
+            ImageLayerInner::load(&path, self.desc.image_layer_lsn(), None, None, ctx).await?;
 
         // not production code
         let actual_layer_name = LayerName::from_str(path.file_name().unwrap()).unwrap();
@@ -308,7 +306,7 @@ impl ImageLayer {
                 metadata.len(),
             ), // Now we assume image layer ALWAYS covers the full range. This may change in the future.
             lsn: summary.lsn,
-            access_stats: LayerAccessStats::empty_will_record_residence_event_later(),
+            access_stats: Default::default(),
             inner: OnceCell::new(),
         })
     }
@@ -369,12 +367,10 @@ impl ImageLayer {
 }
 
 impl ImageLayerInner {
-    #[cfg(test)]
     pub(crate) fn key_range(&self) -> &Range<Key> {
         &self.key_range
     }
 
-    #[cfg(test)]
     pub(crate) fn lsn(&self) -> Lsn {
         self.lsn
     }
@@ -388,17 +384,16 @@ impl ImageLayerInner {
         summary: Option<Summary>,
         max_vectored_read_bytes: Option<MaxVectoredReadBytes>,
         ctx: &RequestContext,
-    ) -> Result<Result<Self, anyhow::Error>, anyhow::Error> {
-        let file = match VirtualFile::open(path, ctx).await {
-            Ok(file) => file,
-            Err(e) => return Ok(Err(anyhow::Error::new(e).context("open layer file"))),
-        };
+    ) -> anyhow::Result<Self> {
+        let file = VirtualFile::open(path, ctx)
+            .await
+            .context("open layer file")?;
         let file_id = page_cache::next_file_id();
         let block_reader = FileBlockReader::new(&file, file_id);
-        let summary_blk = match block_reader.read_blk(0, ctx).await {
-            Ok(blk) => blk,
-            Err(e) => return Ok(Err(anyhow::Error::new(e).context("read first block"))),
-        };
+        let summary_blk = block_reader
+            .read_blk(0, ctx)
+            .await
+            .context("read first block")?;
 
         // length is the only way how this could fail, so it's not actually likely at all unless
         // read_blk returns wrong sized block.
@@ -423,7 +418,7 @@ impl ImageLayerInner {
             }
         }
 
-        Ok(Ok(ImageLayerInner {
+        Ok(ImageLayerInner {
             index_start_blk: actual_summary.index_start_blk,
             index_root_blk: actual_summary.index_root_blk,
             lsn,
@@ -431,7 +426,7 @@ impl ImageLayerInner {
             file_id,
             max_vectored_read_bytes,
             key_range: actual_summary.key_range,
-        }))
+        })
     }
 
     pub(super) async fn get_value_reconstruct_data(
@@ -699,7 +694,6 @@ impl ImageLayerInner {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn iter<'a>(&'a self, ctx: &'a RequestContext) -> ImageLayerIterator<'a> {
         let block_reader = FileBlockReader::new(&self.file, self.file_id);
         let tree_reader =
@@ -708,9 +702,9 @@ impl ImageLayerInner {
             image_layer: self,
             ctx,
             index_iter: tree_reader.iter(&[0; KEY_SIZE], ctx),
-            key_values_batch: std::collections::VecDeque::new(),
+            key_values_batch: VecDeque::new(),
             is_end: false,
-            planner: crate::tenant::vectored_blob_io::StreamingVectoredReadPlanner::new(
+            planner: StreamingVectoredReadPlanner::new(
                 1024 * 8192, // The default value. Unit tests might use a different value. 1024 * 8K = 8MB buffer.
                 1024,        // The default value. Unit tests might use a different value
             ),
@@ -736,6 +730,9 @@ struct ImageLayerWriterInner {
     tenant_shard_id: TenantShardId,
     key_range: Range<Key>,
     lsn: Lsn,
+
+    // Total uncompressed bytes passed into put_image
+    uncompressed_bytes: u64,
 
     blob_writer: BlobWriter<false>,
     tree: DiskBtreeBuilder<BlockBuf, KEY_SIZE>,
@@ -792,6 +789,7 @@ impl ImageLayerWriterInner {
             lsn,
             tree: tree_builder,
             blob_writer,
+            uncompressed_bytes: 0,
         };
 
         Ok(writer)
@@ -810,6 +808,7 @@ impl ImageLayerWriterInner {
     ) -> anyhow::Result<()> {
         ensure!(self.key_range.contains(&key));
         let compression = self.conf.image_compression;
+        self.uncompressed_bytes += img.len() as u64;
         let (_img, res) = self
             .blob_writer
             .write_blob_maybe_compressed(img, ctx, compression)
@@ -834,6 +833,11 @@ impl ImageLayerWriterInner {
     ) -> anyhow::Result<ResidentLayer> {
         let index_start_blk =
             ((self.blob_writer.size() + PAGE_SZ as u64 - 1) / PAGE_SZ as u64) as u32;
+
+        // Calculate compression ratio
+        let compressed_size = self.blob_writer.size() - PAGE_SZ as u64; // Subtract PAGE_SZ for header
+        crate::metrics::COMPRESSION_IMAGE_INPUT_BYTES.inc_by(self.uncompressed_bytes);
+        crate::metrics::COMPRESSION_IMAGE_OUTPUT_BYTES.inc_by(compressed_size);
 
         let mut file = self.blob_writer.into_inner();
 
@@ -974,17 +978,15 @@ impl Drop for ImageLayerWriter {
     }
 }
 
-#[cfg(test)]
 pub struct ImageLayerIterator<'a> {
     image_layer: &'a ImageLayerInner,
     ctx: &'a RequestContext,
-    planner: crate::tenant::vectored_blob_io::StreamingVectoredReadPlanner,
-    index_iter: crate::tenant::disk_btree::DiskBtreeIterator<'a>,
-    key_values_batch: std::collections::VecDeque<(Key, Lsn, Value)>,
+    planner: StreamingVectoredReadPlanner,
+    index_iter: DiskBtreeIterator<'a>,
+    key_values_batch: VecDeque<(Key, Lsn, Value)>,
     is_end: bool,
 }
 
-#[cfg(test)]
 impl<'a> ImageLayerIterator<'a> {
     /// Retrieve a batch of key-value pairs into the iterator buffer.
     async fn next_batch(&mut self) -> anyhow::Result<()> {
@@ -1102,6 +1104,7 @@ mod test {
             ShardIdentity::unsharded(),
             get_next_gen(),
         )
+        .await
         .unwrap();
         let (tenant, ctx) = harness.load().await;
         let timeline = tenant
@@ -1168,6 +1171,7 @@ mod test {
                 // But here, all we care about is that the gen number is unique.
                 get_next_gen(),
             )
+            .await
             .unwrap();
             let (tenant, ctx) = harness.load().await;
             let timeline = tenant
@@ -1299,7 +1303,7 @@ mod test {
 
     #[tokio::test]
     async fn image_layer_iterator() {
-        let harness = TenantHarness::create("image_layer_iterator").unwrap();
+        let harness = TenantHarness::create("image_layer_iterator").await.unwrap();
         let (tenant, ctx) = harness.load().await;
 
         let tline = tenant
