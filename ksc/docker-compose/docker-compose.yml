@@ -32,7 +32,8 @@ services:
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     extra_hosts:
       - "minio:10.43.195.166"
-
+    volumes:
+      - ~/data/pageserver-data:/data/.neon
     environment:
       - BROKER_ENDPOINT='http://storage_broker:50051'
       - AWS_ACCESS_KEY_ID=minioadmin
@@ -46,7 +47,9 @@ services:
       - "-c"
     command:
       - "/usr/local/bin/pageserver -D /data/.neon/
+                                   -c \"id=1234\"
                                    -c \"broker_endpoint=$$BROKER_ENDPOINT\"
+                                   -c \"pg_distrib_dir='/usr/local/'\"
                                    -c \"listen_pg_addr='0.0.0.0:6400'\"
                                    -c \"listen_http_addr='0.0.0.0:9898'\"
                                    -c \"remote_storage={endpoint='http://minio:9000',
@@ -62,6 +65,8 @@ services:
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     extra_hosts:
       - "minio:10.43.195.166"
+    volumes:
+      - ~/data/safekeeper1-data:/data
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper1:5454
       - SAFEKEEPER_ID=1
@@ -94,6 +99,8 @@ services:
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     extra_hosts:
       - "minio:10.43.195.166"
+    volumes:
+      - ~/data/safekeeper2-data:/data
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper2:5454
       - SAFEKEEPER_ID=2
@@ -126,6 +133,8 @@ services:
     image: harbor.dh.ksyun.com/bigdata/pbear-neon:0.0.1-pg-16
     extra_hosts:
       - "minio:10.43.195.166"
+    volumes:
+      - ~/data/safekeeper3-data:/data
     environment:
       - SAFEKEEPER_ADVERTISE_URL=safekeeper3:5454
       - SAFEKEEPER_ID=3
