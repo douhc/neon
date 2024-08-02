@@ -14,7 +14,7 @@ COPY ksc/docker/sources.list /etc/apt/sources.list
 
 RUN apt update  && \
     apt install -y --no-install-recommends  tzdata locales && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8 && \
-    apt install -y --no-install-recommends  procps vim tini lsof grep sed git curl wget telnet ca-certificates gnupg jq python3-pip netcat && \
+    apt install -y --no-install-recommends  procps vim tini lsof grep sed git curl wget telnet ca-certificates gnupg jq python3-pip netcat uuid && \
     mkdir /root/.pip && \
     apt clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/* ~/.cache/*
 

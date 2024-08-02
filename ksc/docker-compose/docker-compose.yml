@@ -181,11 +181,11 @@ services:
       #- RUST_BACKTRACE=1
       - TENANT_ID=a87b11f28feed3f5c1705cd4f9d0fca4
       - TIMELINE_ID=9ec89259964e004f155c323a63b49135
-      - SAFEKEEPERS=safekeeper1:5454,safekeeper2:5454,safekeeper3:5454
-      - PAGESERVER_CONNSTRING='host=pageserver port=6400'
-    ports:
-      - 55433:55433 # pg protocol handler
-      - 3080:3080 # http endpoints
+      - SAFEKEEPERS="safekeeper1:5454,safekeeper2:5454,safekeeper3:5454"
+      - PAGESERVER_CONNSTRING="host=pageserver port=6400"
+    # ports:
+    #   - 55433:55433 # pg protocol handler
+    #   - 3080:3080 # http endpoints
     entrypoint:
       - "/usr/local/bin/start-cn.sh"
     depends_on:
